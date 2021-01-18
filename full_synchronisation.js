@@ -1,8 +1,8 @@
 // Get the query backend
-let backend_query = await base.getTable("Manage").selectRecordsAsync({
+let backend_query = await base.getTable("Variables").selectRecordsAsync({
     fields: ['Name', 'Value'],
 })
-const SF_API_URL = backend_query.records.filter(record => record.name === 'BACKEND_URL')[0].getCellValue('Value')
+const SF_API_URL = backend_query.records.filter(record => record.name === 'FEEDBACK_API_URL')[0].getCellValue('Value')
 
 // Tables
 const tables = [

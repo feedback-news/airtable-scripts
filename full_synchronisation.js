@@ -37,6 +37,10 @@ function return_record_data(table, record) {
         }
     }
     else if (table == 'Appearances') {
+        if (record.getCellValue('Item reviewed') == null) {
+            console.log('No Item reviews for appearance with id : ', record.id)
+            return null
+        }
         return {
             "airtableId": record.id,
             "url": record.getCellValue('url'),
@@ -98,7 +102,7 @@ function return_table_url(table) {
         return `${SF_API_URL}/webhooks/verdict`
     }
     else if (table == 'Appearances') {
-        return `${SF_API_URL}/webhooks/appearance`
+        return `${SF_API_URL}/webhooks/link`
     }
     else if (table == 'Reviewers') {
         return `${SF_API_URL}/webhooks/reviewer`
@@ -120,52 +124,49 @@ function return_table_url(table) {
 const syncTable = async (table) => {
     let chosen_table = base.getTable(table)
     let query = await chosen_table.selectRecordsAsync()
-
+    let notSyncQuery = query.records.filter(record => record.getCellValueAsString('Sync status') != "🟢 Synced")
+    console.log("Number of rows to synchronize : ", notSyncQuery.length)
     let nb_rows_to_sync = 0
     let nb_rows_synced = 0
     let nb_rows_error = 0
-    let nb_rows_already_synced = 0
+    let nb_query_to_pass = 0
 
     console.log('Synchronised rows for : ', table)
 
-    for (let i=0;i<query.records.length;i+=1) {
-        let record = query.records[i]
-        if (record.getCellValueAsString('Sync status') == "🟢 Synced") {
-            nb_rows_already_synced = nb_rows_already_synced + 1
+    for (let i=0;i<notSyncQuery.length;i+=1) {
+        let record = notSyncQuery[i]
+        nb_rows_to_sync = nb_rows_to_sync + 1
+
+        let data = return_record_data(table, record)
+        if (data == null) {
+            nb_query_to_pass -= 1
             continue
         }
-        else {
-            nb_rows_to_sync = nb_rows_to_sync + 1
-
-            let data = return_record_data(table, record)
-            let url = return_table_url(table)
-            let response = await fetch(url, {
-                method: 'POST',
-                body: JSON.stringify(data),
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+        let url = return_table_url(table)
+        let response = await fetch(url, {
+            method: 'POST',
+            body: JSON.stringify(data),
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        const current_time = new Date().toISOString()
+        if (response.status === 200 || response.status === 201) {
+            await chosen_table.updateRecordAsync(record, {
+                'Synced time input': current_time
             })
-            const current_time = new Date().toISOString()
-            if (response.status === 200 || response.status === 201) {
-                await chosen_table.updateRecordAsync(record, {
-                    'Synced time input': current_time
-                })
-                nb_rows_synced = nb_rows_synced + 1
-            } else {
-                await chosen_table.updateRecordAsync(record, {
-                    'Synced time input': 'Error'
-                })
-                nb_rows_error = nb_rows_error + 1
-            }
+            nb_rows_synced = nb_rows_synced + 1
+        } else {
+            await chosen_table.updateRecordAsync(record, {
+                'Synced time input': 'Error'
+            })
+            nb_rows_error = nb_rows_error + 1
         }
     }
 
-    console.log('Number of rows to synchronized : ', nb_rows_to_sync)
     console.log('Number of rows synchronized : ', nb_rows_synced)
     console.log('Number of errors : ', nb_rows_error)
-    console.log('Number of rows already synchronized : ', nb_rows_already_synced)
-
+    console.log('Number of rows to pass : ', nb_query_to_pass)
 
     return query
 }
